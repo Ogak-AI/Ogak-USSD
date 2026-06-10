@@ -1,0 +1,151 @@
+services:
+  # ===== PostgreSQL Database =====
+  postgres:
+    image: postgres:16-alpine
+    container_name: ogak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ogak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ogak_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-ogak_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ogak}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ogak-network
+
+  # ===== Redis Cache & Sessions =====
+  redis:
+    image: redis:7-alpine
+    container_name: ogak-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - ogak-network
+
+  # ===== USSD Engine =====
+  ussd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ogak-ussd
+    restart: unless-stopped
+    command: uvicorn packages.ussd.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "${USSD_PORT:-8000}:8000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - ogak-network
+
+  # ===== API Gateway =====
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ogak-api
+    restart: unless-stopped
+    command: uvicorn packages.api.main:app --host 0.0.0.0 --port 8001 --reload
+    ports:
+      - "${API_PORT:-8001}:8001"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - ogak-network
+
+  # ===== ILP Connector =====
+  ilp-connector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ogak-ilp
+    restart: unless-stopped
+    command: uvicorn packages.ilp_connector.main:app --host 0.0.0.0 --port 8002 --reload
+    ports:
+      - "${ILP_PORT:-8002}:8002"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - ogak-network
+
+  # ===== Admin Dashboard =====
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ogak-admin
+    restart: unless-stopped
+    command: uvicorn packages.admin.main:app --host 0.0.0.0 --port 8003 --reload
+    ports:
+      - "${ADMIN_PORT:-8003}:8003"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - ogak-network
+
+  # ===== Celery Worker (Async Settlement & Rollbacks) =====
+  # NOTE: Production only. No simulators or dev tools are included in this compose.
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ogak-celery
+    restart: unless-stopped
+    command: celery -A packages.api.worker worker --loglevel=info --concurrency=4
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - ogak-network
+
+networks:
+  ogak-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

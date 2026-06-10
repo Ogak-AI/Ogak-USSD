@@ -1,0 +1,55 @@
+# ===== Core Framework =====
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# ===== Database =====
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+psycopg2-binary==2.9.10
+
+# ===== Redis =====
+redis[hiredis]==5.2.1
+
+# ===== HTTP Client =====
+httpx==0.28.1
+aiohttp==3.11.11
+
+# ===== Security =====
+cryptography==44.0.0
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+
+# ===== Validation & Serialization =====
+phonenumbers==8.13.52
+pycountry==24.6.1
+
+# ===== Africa's Talking =====
+africastalking==1.2.7
+
+# ===== Logging & Monitoring =====
+structlog==24.4.0
+rich==13.9.4
+
+# ===== Testing =====
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+
+# ===== Development =====
+ruff==0.8.6
+mypy==1.14.1
+pre-commit==4.0.1
+
+# ===== Task Queue (for async settlement) =====
+celery[redis]==5.4.0
+
+# ===== Rate Limiting =====
+slowapi==0.1.9
+
+# ===== WebSocket (Admin Dashboard) =====
+websockets==14.1
