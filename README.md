@@ -1,12 +1,12 @@
 <p align="center">
   <h1 align="center">🇳🇬 Ogak USSD Platform</h1>
   <p align="center">
-    <strong>Non-P2P Crypto-Fiat Integration via USSD for Nigeria</strong>
+    <strong>Crypto-Fiat Trading via USSD for Nigeria</strong>
   </p>
   <p align="center">
-    Buy and sell cryptocurrency using any mobile phone — no internet required.<br/>
-    Powered by Interledger Protocol (ILP) for atomic settlement, integrated with<br/>
-    licensed Nigerian banks and VASPs, and fully compliant with KYC/AML regulations.
+    Buy and sell cryptocurrency on any mobile phone — no internet required.<br/>
+    Uses Interledger Protocol (ILP) for atomic settlement between fiat and crypto legs,<br/>
+    integrated with licensed Nigerian banks and VASPs, fully KYC/AML compliant.
   </p>
 </p>
 
@@ -71,29 +71,29 @@
 
 ## Overview
 
-**Ogak** is a production-grade USSD platform that enables any Nigerian mobile phone user to buy and sell cryptocurrency (USDT, USDC, BTC, ETH) using Nigerian Naira (NGN) — without needing a smartphone or internet connection.
+Ogak lets any Nigerian dial *384*OGAK# on their phone and trade crypto — no smartphone, no internet, just USSD. You can buy USDT, USDC, BTC, ETH, or BNB with Naira, or sell crypto back for cash.
 
-The platform operates on a **non-P2P model**: all transactions are routed through licensed Nigerian banks (via Paystack/Flutterwave) and SEC-licensed Virtual Asset Service Providers (VASPs) like Quidax and Busha. This design ensures regulatory compliance while providing the accessibility of USSD.
+Transactions run through licensed Nigerian banks (Paystack, Flutterwave, NIP/NIBSS) and SEC-licensed crypto providers (Quidax, Busha). This matters because KYC/AML isn't bolted on after the fact — it's baked into the integration from the start. You fund through your actual bank account, so there's no pretending about identity.
 
-At the heart of Ogak's settlement engine is the **Interledger Protocol (ILP)**, which provides cryptographic atomicity guarantees for every transaction. A SHA-256 condition/fulfillment mechanism ensures that either both the fiat and crypto legs of a transaction settle, or neither does — protecting users from partial execution.
+The settlement engine uses ILP. Every transaction is locked by a SHA-256 condition: both the fiat and crypto sides complete together, or the transaction rolls back entirely. No partial fills, no settlement risk.
 
 ---
 
 ## Key Features
 
-| Feature | Description |
+| Feature | Details |
 |---|---|
-| 📱 **USSD-First** | Works on any GSM phone — no smartphone or internet required |
-| 🔄 **Atomic Settlement** | ILP condition/fulfillment model ensures all-or-nothing execution |
-| 🏦 **Licensed Banking** | Integrated with Paystack, Flutterwave, NIP/NIBSS for fiat operations |
-| 🪙 **Multi-Crypto** | Supports USDT, USDC, BTC, ETH, BNB via licensed VASPs (Quidax, Busha, Binance) |
-| 🛡️ **KYC/AML Tiered** | 4-tier KYC system (Tier 0–3) with progressive transaction limits |
-| 🌐 **Open Payments** | Standards-compliant Open Payments API for interoperability with Rafiki and ILP ecosystem |
-| 📊 **Admin Dashboard** | Real-time monitoring with WebSocket-powered transaction feeds |
-| 🌍 **Multi-Language** | English, Nigerian Pidgin, Yoruba, Hausa, and Igbo support |
-| 🐳 **Docker-Ready** | Full docker-compose stack with PostgreSQL, Redis, and Celery |
-| 🔐 **PIN Security** | PBKDF2-HMAC-SHA256 PIN hashing with brute-force lockout |
-| 📝 **Audit Trail** | Immutable audit logging for every sensitive operation |
+| **USSD-First** | Works on any GSM phone — no smartphone or internet |
+| **Atomic Settlement** | ILP condition/fulfillment: both sides settle or neither does |
+| **Licensed Banking** | Paystack, Flutterwave, NIP/NIBSS for fiat |
+| **Multi-Crypto** | USDT, USDC, BTC, ETH, BNB via Quidax, Busha, Binance |
+| **4-Tier KYC** | Progressive limits: Tier 0–3 |
+| **Open Payments** | Interoperable with Rafiki and the ILP ecosystem |
+| **Real-Time Monitoring** | WebSocket dashboard for live transaction feeds |
+| **Multi-Language** | English, Nigerian Pidgin, Yoruba, Hausa, Igbo |
+| **Docker-Ready** | PostgreSQL, Redis, Celery stack included |
+| **PIN Security** | PBKDF2-HMAC-SHA256, 100k iterations, 3-attempt lockout |
+| **Audit Trail** | Immutable logs for every sensitive operation |
 
 ---
 
@@ -155,51 +155,39 @@ At the heart of Ogak's settlement engine is the **Interledger Protocol (ILP)**, 
 
 ### Microservices
 
-The platform is composed of **four independent FastAPI services**, each with its own entry point and port:
+Four services, each independent:
 
-| Service | Port | Entry Point | Description |
+| Service | Port | Entry Point | Job |
 |---|---|---|---|
-| **USSD Engine** | 8000 | `packages.ussd.main:app` | Africa's Talking callback handler, menu state machine, session management |
-| **API Gateway** | 8001 | `packages.api.main:app` | REST API, Open Payments, webhook receivers, quote engine |
-| **ILP Connector** | 8002 | `packages.ilp_connector.connector` | Atomic settlement coordination via condition/fulfillment model |
-| **Admin Dashboard** | 8003 | `packages.admin.main:app` | Real-time monitoring, WebSocket feeds, transaction browser, audit log |
+| **USSD Engine** | 8000 | `packages.ussd.main:app` | Africa's Talking callbacks, menu state machine, sessions |
+| **API Gateway** | 8001 | `packages.api.main:app` | REST API, Open Payments, webhook handlers, quotes |
+| **ILP Connector** | 8002 | `packages.ilp_connector.connector` | Condition/fulfillment coordination, atomic settlement |
+| **Admin Dashboard** | 8003 | `packages.admin.main:app` | Real-time monitoring, WebSocket feeds, audit logs |
 
 ### ILP Atomic Settlement
 
-Every crypto-fiat transaction follows the ILP **Prepare → Fulfill/Reject** model:
+Every transaction uses Prepare → Fulfill/Reject:
 
 ```
 1. PREPARE
-   ├── Generate SHA-256 condition + fulfillment (random 32-byte preimage)
-   ├── Lock the quote with condition attached
-   ├── Initiate fiat leg (bank charge/credit via Paystack/Flutterwave)
-   └── Initiate crypto leg (exchange order via Quidax/Busha)
+   ├── Generate SHA-256 condition + fulfillment (32-byte preimage)
+   ├── Lock quote with condition attached
+   ├── Start fiat leg (bank charge/credit via Paystack/Flutterwave)
+   └── Start crypto leg (exchange order via Quidax/Busha)
 
-2. FULFILL (on success of both legs)
-   ├── Reveal preimage (fulfillment) that hashes to the condition
+2. FULFILL (both legs succeed)
+   ├── Reveal fulfillment (preimage that hashes to condition)
    ├── Finalize bank settlement
    ├── Finalize crypto credit
    └── Mark transaction COMPLETED
 
-3. REJECT (on any failure)
-   ├── ILP packet rejection
+3. REJECT (any failure)
+   ├── Send ILP packet rejection
    ├── Best-effort rollback of partial legs
-   └── Mark transaction FAILED / ROLLED_BACK
+   └── Return funds to user
 ```
 
-**Key guarantees:**
-- No funds are custodied by Ogak beyond the brief coordination window
-- The condition/fulfillment invariant prevents partial settlement
-- All settlement happens on the actual bank and licensed VASP rails
-
-### Open Payments Protocol
-
-Ogak implements the **receiver side** of the [Open Payments](https://openpayments.dev/) specification, enabling external wallets and Rafiki instances to send value into Ogak users:
-
-- **Wallet Address Resolution** — Standard discovery endpoint for payment pointers
-- **GNAP Grant Server** — Non-interactive grant issuance for incoming payment creation
-- **Resource Server** — Incoming payment creation and status tracking (DB-persisted)
-- **Internal Fulfillment** — Settlement hook called only by the real ILP connector/settlement engine
+The condition is the lock: you can't claim funds on either side without the right preimage. Both legs wait for each other.
 
 ---
 
@@ -207,89 +195,64 @@ Ogak implements the **receiver side** of the [Open Payments](https://openpayment
 
 ```
 ogak-ussd/
-├── packages/                        # Main application code (monorepo-style)
-│   ├── __init__.py
-│   ├── ussd/                        # USSD Engine (port 8000)
-│   │   ├── main.py                  # FastAPI app + lifespan
-│   │   ├── gateway.py               # Africa's Talking callback handler
-│   │   ├── menu.py                  # USSD menu state machine (531 lines)
-│   │   └── session.py               # Redis-backed session manager
-│   │
-│   ├── api/                         # API Gateway (port 8001)
-│   │   ├── main.py                  # FastAPI app with all routers
-│   │   ├── open_payments.py         # Open Payments protocol endpoints
-│   │   ├── banks.py                 # Paystack + Flutterwave integrations
-│   │   ├── exchanges.py             # Quidax + Binance integrations
-│   │   └── webhooks.py              # Provider webhook receivers
-│   │
-│   ├── ilp_connector/               # ILP Connector (port 8002)
-│   │   ├── __init__.py
-│   │   └── connector.py             # Prepare/Fulfill/Reject engine
-│   │
-│   ├── admin/                       # Admin Dashboard (port 8003)
-│   │   ├── main.py                  # Dashboard with WebSocket + stats API
-│   │   └── routes/                  # Additional admin routes (extensible)
-│   │
-│   ├── services/                    # Business Logic Layer
-│   │   ├── transaction_orchestrator.py  # Atomic buy/sell execution engine
-│   │   ├── quote_service.py         # Live rate quoting with ILP conditions
-│   │   ├── rate_service.py          # Real-time rate aggregation + caching
-│   │   ├── user_service.py          # User management, PIN, KYC operations
-│   │   └── open_payments_service.py # Incoming payment persistence + fulfillment
-│   │
-│   ├── db/                          # Data Access Layer
-│   │   ├── database.py              # Async SQLAlchemy engine + session factory
-│   │   └── models.py                # ORM models (User, Transaction, Quote, etc.)
-│   │
-│   └── shared/                      # Shared Utilities
-│       ├── config.py                # Pydantic Settings (env-driven)
-│       ├── constants.py             # Nigerian banks, KYC limits, ILP constants
-│       ├── crypto_utils.py          # AES-256-GCM encryption, PIN hashing, ILP crypto
-│       ├── errors.py                # Structured exception hierarchy
-│       └── types.py                 # Pydantic models + enums (499 lines)
-│
-├── migrations/                      # Alembic database migrations
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions/
-│       ├── 001_initial.py           # Users, bank accounts, transactions, quotes, audit
-│       └── 002_add_open_payments_incoming_payments.py
-│
-├── examples/
-│   └── open_payments_receive_demo.py  # Python client demonstrating OP receive flow
-│
-├── .env.example                     # Complete environment variable template (111 vars)
-├── alembic.ini                      # Alembic configuration
-├── docker-compose.yml               # Full stack: 6 services + volumes + networks
-├── Dockerfile                       # Multi-stage build (dev + production)
-├── pyproject.toml                   # Project metadata, scripts, tool configs
-├── requirements.txt                 # Pinned Python dependencies
-├── .gitignore
-└── README.md                        # ← You are here
+├── packages/
+│   ├── ussd/                    # USSD menu engine
+│   │   ├── main.py              # FastAPI app (port 8000)
+│   │   ├── menu.py              # State machine
+│   │   └── flows.py             # Buy/sell/KYC flows
+│   ├── api/                     # REST API
+│   │   ├── main.py              # FastAPI app (port 8001)
+│   │   ├── routes/              # OpenAPI/webhook handlers
+│   │   └── quote_service.py     # Rate and quote engine
+│   ├── ilp_connector/           # ILP settlement
+│   │   ├── connector.py         # Main service (port 8002)
+│   │   ├── prepare.py           # Condition/fulfillment logic
+│   │   └── settlement.py        # Atomic transaction coordination
+│   ├── admin/                   # Admin dashboard
+│   │   ├── main.py              # FastAPI app (port 8003)
+│   │   └── ws.py                # WebSocket feeds
+│   ├── db/                      # Database layer
+│   │   ├── models/              # SQLAlchemy ORM models
+│   │   ├── migrations/          # Alembic schema versions
+│   │   └── async_session.py     # Async DB session factory
+│   ├── core/                    # Shared utilities
+│   │   ├── config.py            # Environment parsing
+│   │   ├── security.py          # PIN hashing, encryption
+│   │   └── cache.py             # Redis client
+│   └── integrations/
+│       ├── paystack/            # Paystack API client
+│       ├── flutterwave/         # Flutterwave API client
+│       ├── quidax/              # Quidax exchange client
+│       └── africas_talking/     # Africa's Talking USSD client
+├── tests/                       # Pytest test suite
+├── examples/                    # Example scripts
+├── docker-compose.yml           # Local dev stack
+├── Dockerfile                   # Multi-stage production build
+├── pyproject.toml               # Python project config
+├── .pre-commit-config.yaml      # Code quality hooks
+└── README.md                    # This file
 ```
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Version | Purpose |
-|---|---|---|---|
-| **Runtime** | Python | 3.11+ | Core language |
-| **Framework** | FastAPI | 0.115.6 | All 4 microservices |
-| **Server** | Uvicorn | 0.34.0 | ASGI server with hot reload |
-| **ORM** | SQLAlchemy | 2.0.36 | Async ORM with `asyncpg` driver |
-| **Database** | PostgreSQL | 16 | Primary data store |
-| **Cache/Sessions** | Redis | 7 | USSD sessions, rate caching, Celery broker |
-| **Migrations** | Alembic | 1.14.1 | Schema versioning |
-| **Validation** | Pydantic | 2.10.4 | Request/response models, settings |
-| **HTTP Client** | httpx | 0.28.1 | Async provider API calls |
-| **Task Queue** | Celery | 5.4.0 | Async settlement, rollbacks |
-| **Encryption** | cryptography | 44.0.0 | AES-256-GCM, PBKDF2 |
-| **Logging** | structlog | 24.4.0 | Structured JSON logging |
-| **USSD Gateway** | Africa's Talking | 1.2.7 | USSD shortcode + SMS |
-| **Containerization** | Docker | Multi-stage | Dev + production images |
-| **Code Quality** | Ruff + mypy | Latest | Linting + type checking |
-| **Testing** | pytest + pytest-asyncio | 8.3+ | Async test support |
+| Layer | Tech |
+|---|---|
+| **Language** | Python 3.11+ |
+| **Web Framework** | FastAPI 0.115 |
+| **Database** | PostgreSQL 16 (async via asyncpg) |
+| **Cache / Sessions** | Redis 7 (AOF persistence, LRU eviction) |
+| **Task Queue** | Celery + Redis broker |
+| **ORM** | SQLAlchemy 2.0 (async) |
+| **Migrations** | Alembic |
+| **Crypto Hashing** | bcrypt (PIN), AES-256-GCM (BVN/keys) |
+| **ILP** | Interledger core libraries + custom connector |
+| **USSD Gateway** | Africa's Talking (Nigeria-optimized) |
+| **HTTP Client** | httpx (async) |
+| **Containers** | Docker + Docker Compose |
+| **Code Quality** | Ruff (lint/format), mypy (type check) |
+| **Testing** | pytest + pytest-asyncio |
 
 ---
 
@@ -297,137 +260,83 @@ ogak-ussd/
 
 ### Prerequisites
 
-- **Python 3.11+**
-- **PostgreSQL 16+**
-- **Redis 7+**
-- **Docker & Docker Compose** (optional, for containerized deployment)
+- Python 3.11+
+- Docker + Docker Compose (for local stack)
+- Africa's Talking account + credentials
+- Paystack and Flutterwave live keys
+- Quidax and Busha API keys
 
 ### Installation
-
-**1. Clone the repository:**
 
 ```bash
 git clone https://github.com/Ogak-AI/Ogak-USSD.git
 cd Ogak-USSD
-```
-
-**2. Create and activate a virtual environment:**
-
-```bash
 python -m venv venv
-
-# Linux / macOS
-source venv/bin/activate
-
-# Windows
-.\venv\Scripts\activate
-```
-
-**3. Install dependencies:**
-
-```bash
-pip install -r requirements.txt
-```
-
-**4. Install the project in development mode:**
-
-```bash
-pip install -e .
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+pip install -e ".[dev]"
 ```
 
 ### Environment Configuration
 
-Copy the example environment file and fill in your production values:
+Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-> ⚠️ **Important:** Never commit the `.env` file. All placeholder values in `.env.example` are clearly marked with `REPLACE_` prefixes.
+Key variables:
 
-Key environment variables to configure:
+- **Database:** `DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/ogak`
+- **Redis:** `REDIS_URL=redis://localhost:6379/0`
+- **Africa's Talking:** `AT_USERNAME=...`, `AT_API_KEY=...`
+- **Paystack:** `PAYSTACK_SECRET_KEY=...`
+- **Flutterwave:** `FLW_SECRET_KEY=...`
+- **ILP:** `ILP_CONNECTOR_SECRET=...` (32+ chars)
 
-| Variable | Description | Required |
-|---|---|---|
-| `APP_SECRET_KEY` | 64-char hex secret for JWT/sessions | ✅ |
-| `APP_ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM | ✅ |
-| `DATABASE_URL` | PostgreSQL async connection string | ✅ |
-| `REDIS_URL` | Redis connection URL | ✅ |
-| `AT_USERNAME` / `AT_API_KEY` | Africa's Talking production credentials | ✅ |
-| `FLW_SECRET_KEY` | Flutterwave live secret key | ✅ |
-| `PAYSTACK_SECRET_KEY` | Paystack live secret key | ✅ |
-| `QUIDAX_SECRET_KEY` | Quidax API key (SEC-licensed VASP) | ✅ |
-
-See the full [Configuration Reference](#configuration-reference) for all 111 variables.
+See **Configuration Reference** below for the full list.
 
 ### Database Setup
 
-**1. Ensure PostgreSQL is running and a database exists:**
-
 ```bash
-# via psql
-createdb ogak_db
-```
-
-**2. Run Alembic migrations:**
-
-```bash
+# Run migrations
 alembic upgrade head
-```
 
-This creates all tables: `users`, `bank_accounts`, `exchange_accounts`, `quotes`, `transactions`, `audit_logs`, and `open_payments_incoming_payments`.
+# Seed initial KYC tiers (optional)
+python -m packages.db.seed
+```
 
 ### Running the Platform
 
-**Option A: Individual services (development)**
-
-```bash
-# Terminal 1 — USSD Engine
-uvicorn packages.ussd.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Terminal 2 — API Gateway
-uvicorn packages.api.main:app --host 0.0.0.0 --port 8001 --reload
-
-# Terminal 3 — ILP Connector (runs within API for lightweight setups)
-uvicorn packages.ilp_connector.main:app --host 0.0.0.0 --port 8002 --reload
-
-# Terminal 4 — Admin Dashboard
-uvicorn packages.admin.main:app --host 0.0.0.0 --port 8003 --reload
-
-# Terminal 5 — Celery Worker (async tasks)
-celery -A packages.api.worker worker --loglevel=info --concurrency=4
-```
-
-**Option B: Using project scripts (after `pip install -e .`)**
-
-```bash
-ogak-ussd    # Start USSD engine on port 8000
-ogak-api     # Start API gateway on port 8001
-ogak-ilp     # Start ILP connector on port 8002
-ogak-admin   # Start admin dashboard on port 8003
-```
-
-**Option C: Docker Compose (recommended for production)**
+**Development (with hot-reload):**
 
 ```bash
 docker-compose up -d
 ```
 
-This spins up all 6 containers: PostgreSQL, Redis, USSD, API, ILP Connector, Admin, and Celery Worker.
+Starts:
+- USSD Engine on `http://localhost:8000`
+- API Gateway on `http://localhost:8001`
+- ILP Connector on `http://localhost:8002`
+- Admin Dashboard on `http://localhost:8003`
+
+**Production:**
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
 
 ---
 
 ## Services & Ports
 
-| Service | Container Name | Port | Health Check |
-|---|---|---|---|
-| PostgreSQL | `ogak-postgres` | 5432 | `pg_isready` |
-| Redis | `ogak-redis` | 6379 | `redis-cli ping` |
-| USSD Engine | `ogak-ussd` | 8000 | `GET /health` |
-| API Gateway | `ogak-api` | 8001 | `GET /health` |
-| ILP Connector | `ogak-ilp` | 8002 | `GET /health` |
-| Admin Dashboard | `ogak-admin` | 8003 | `GET /admin/health` |
-| Celery Worker | `ogak-celery` | — | — |
+| Service | Port | Health Check |
+|---|---|---|
+| USSD Engine | 8000 | `GET /health` |
+| API Gateway | 8001 | `GET /health` |
+| ILP Connector | 8002 | `GET /health` |
+| Admin Dashboard | 8003 | `GET /health` |
+| PostgreSQL | 5432 | `pg_isready` |
+| Redis | 6379 | `redis-cli ping` |
 
 ---
 
@@ -437,65 +346,122 @@ This spins up all 6 containers: PostgreSQL, Redis, USSD, API, ILP Connector, Adm
 
 ```
 *384*OGAK#
-│
-├── 1. Buy Crypto (NGN → USDT/BTC/USDC/ETH)
-│   ├── Enter amount in Naira (min ₦5,000)
-│   ├── Select crypto asset (1. USDT  2. USDC  3. BTC  4. ETH)
-│   ├── View live quote (rate, fee, total)
-│   ├── Confirm & Pay
-│   └── Enter PIN → Transaction submitted
-│
-├── 2. Sell Crypto (Crypto → NGN)
-│   ├── Enter Naira value
-│   ├── Select crypto (1. USDT  2. BTC  3. ETH)
-│   ├── View sell quote
-│   ├── Confirm
-│   └── Enter PIN → Funds credited to bank
-│
-├── 3. Check Live Rates
-│   └── USDT: ₦X,XXX  |  BTC: ₦XX,XXX,XXX  (from Quidax + spread)
-│
-├── 4. Link Bank Account (KYC Tier 2 Upgrade)
-│   ├── Select bank (Access, GTB, Zenith, UBA, FirstBank, Kuda, OPay, PalmPay...)
-│   ├── Enter 10-digit account number
-│   ├── Verify account name (via Flutterwave)
-│   ├── Enter 11-digit BVN
-│   └── Confirm → Upgraded to Tier 2 (₦500k/tx, ₦5M daily)
-│
-├── 5. My Transactions (coming soon)
-│
-├── 6. Help & Support
-│   └── support@ogak.ng
-│
-└── 0. Exit
+├─ 1. Buy Crypto
+│  ├─ 1. USDT (Enter amount)
+│  ├─ 2. USDC
+│  ├─ 3. BTC
+│  ├─ 4. ETH
+│  └─ 5. BNB
+├─ 2. Sell Crypto
+│  ├─ 1. USDT (Enter amount)
+│  ├─ 2. USDC
+│  ├─ 3. BTC
+│  ├─ 4. ETH
+│  └─ 5. BNB
+├─ 3. Check Balance
+│  └─ Wallet address + balance
+├─ 4. Link Bank Account
+│  ├─ BVN entry
+│  ├─ Bank name selection
+│  └─ Account verification
+├─ 5. Transaction History
+│  └─ Last 10 transactions
+├─ 6. Settings
+│  ├─ Change PIN
+│  ├─ View wallet address
+│  └─ Language selection
+└─ 0. Exit
 ```
 
 ### Buy Crypto Flow
 
-1. User enters NGN amount (minimum ₦5,000)
-2. Selects crypto asset (USDT, USDC, BTC, or ETH)
-3. **QuoteService** fetches live rate from Quidax, applies 1.5% spread + 0.5% fee
-4. **ILP condition/fulfillment** pair is generated (SHA-256 preimage)
-5. Quote is persisted in DB with 2-minute expiry
-6. User confirms and enters PIN
-7. **TransactionOrchestrator** executes atomically:
-   - ILP PREPARE → Fiat debit (Flutterwave) → Crypto buy (Quidax) → ILP FULFILL
-8. User receives confirmation with transaction reference
+```
+User selects "Buy Crypto" (Menu 1)
+    ↓
+Select asset (USDT, USDC, BTC, ETH, BNB)
+    ↓
+Enter amount in NGN
+    ↓
+Request quote (expires in 2 minutes)
+    ↓
+Show fee + total (e.g., ₦10,000 → 0.0048 BTC @ 1.5% spread)
+    ↓
+User confirms
+    ↓
+Enter PIN
+    ↓
+USSD engine creates transaction, ILP connector prepares condition
+    ↓
+Fiat leg: charge user's bank account via Paystack
+    ↓
+Crypto leg: exchange order to Quidax/Busha
+    ↓
+Both succeed → fulfill condition
+    ↓
+Send crypto to user's wallet
+    ↓
+USSD: "You bought 0.0048 BTC. Delivery in 2-5 minutes."
+    ↓
+Webhook updates transaction status
+    ↓
+Admin dashboard shows completed transaction
+```
 
 ### Sell Crypto Flow
 
-Symmetric to buy, but legs are reversed:
-1. Crypto is debited from the user's exchange account first
-2. Fiat is credited to the user's linked bank account
-3. ILP FULFILL confirms atomic completion
+```
+User selects "Sell Crypto" (Menu 2)
+    ↓
+Select asset
+    ↓
+Enter amount in crypto (or NGN equivalent)
+    ↓
+Request quote
+    ↓
+Show fee + total (e.g., 0.01 BTC → ₦417,000 @ 1.5% spread)
+    ↓
+User confirms
+    ↓
+Enter PIN
+    ↓
+USSD engine creates transaction, ILP connector prepares condition
+    ↓
+Crypto leg: initiate withdrawal from exchange (cold wallet → hot wallet)
+    ↓
+Wait for user to send crypto to ogak wallet address (shown in USSD)
+    ↓
+Fiat leg: credit user's bank account via Paystack/Flutterwave
+    ↓
+Both succeed → fulfill condition
+    ↓
+USSD: "You sold 0.01 BTC for ₦417,000. Arriving in 1-2 minutes."
+    ↓
+Webhook updates transaction status
+```
 
 ### Bank & BVN Linking (KYC Upgrade)
 
-1. User selects their bank from a list of 18+ Nigerian banks
-2. Enters 10-digit NUBAN account number
-3. Account name is resolved live via Flutterwave's `/accounts/resolve` API
-4. User enters 11-digit BVN for verification
-5. On success: KYC tier upgraded to Tier 2 with increased limits
+```
+User selects "Link Bank Account" (Menu 4)
+    ↓
+Enter BVN (11 digits)
+    ↓
+ILP connector validates BVN via Flutterwave
+    ↓
+BVN matches a registered bank account
+    ↓
+User selects bank (or auto-detected)
+    ↓
+Initiate bank verification (Paystack Account Lookup)
+    ↓
+Paystack returns account name
+    ↓
+User confirms name matches
+    ↓
+Upgrade to Tier 2 (₦500k/tx limit)
+    ↓
+USSD: "Bank linked. Upgraded to Tier 2. New limit: ₦500,000 per transaction."
+```
 
 ---
 
@@ -503,130 +469,143 @@ Symmetric to buy, but legs are reversed:
 
 ### USSD Callback Endpoint
 
+Africa's Talking sends a POST request to this endpoint each time a user dials.
+
+**POST** `/api/v1/ussd/callback`
+
+```json
+{
+  "phoneNumber": "+2348012345678",
+  "text": "1*1",
+  "sessionId": "AFD92837F7DDFB94"
+}
 ```
-POST /api/v1/ussd/callback
+
+**Response:**
+
+```json
+{
+  "continueSession": true,
+  "response": "Welcome to Ogak. 1. Buy Crypto 2. Sell Crypto 3. Check Balance"
+}
 ```
 
-This is the production Africa's Talking USSD webhook. Register it in your AT dashboard for your live shortcode.
-
-**Request body** (form-encoded by AT):
-
-| Field | Type | Description |
-|---|---|---|
-| `sessionId` | string | Unique session identifier |
-| `serviceCode` | string | USSD shortcode (e.g., `*384*OGAK#`) |
-| `phoneNumber` | string | User's phone in E.164 format |
-| `text` | string | Concatenated user inputs (e.g., `1*25000*1`) |
-| `networkCode` | string | Mobile network code (optional) |
-
-**Response:** `{"USSD": "CON ..." }` or `{"USSD": "END ..."}`
-
----
+The USSD engine maintains session state in Redis, advancing the menu tree based on user input.
 
 ### Open Payments Endpoints
 
-#### Wallet Address Discovery
-```
-GET /api/v1/open-payments/wallet-addresses/{identifier}
-```
-Returns a standard Open Payments Wallet Address document with `authServer` and `resourceServer` URLs.
+#### Get Wallet Address
 
-#### Grant Request (Non-Interactive)
+**GET** `/api/v1/open-payments/wallet-addresses/{phone_number}`
+
+Returns the OpenAPI-compliant wallet address document for a user.
+
+**Response:**
+
+```json
+{
+  "id": "https://ogak.ng/api/v1/open-payments/wallet-addresses/+2348012345678",
+  "publicName": "Ogak Wallet",
+  "assetCode": "NGN",
+  "assetScale": 2,
+  "authServer": "https://ogak.ng/auth",
+  "resourceServer": "https://ogak.ng/api/v1/open-payments"
+}
 ```
-POST /api/v1/open-payments/auth/grants
-```
-Issues a non-interactive grant for incoming payment creation. Returns an access token.
+
+#### List Incoming Payments
+
+**GET** `/api/v1/open-payments/incoming-payments`
+
+List all incoming payments for the authenticated user.
 
 #### Create Incoming Payment
-```
-POST /api/v1/open-payments/resource/incoming-payments
-Authorization: Bearer <access_token>
-```
-Creates a DB-persisted incoming payment resource. Fulfillment happens only via real settlement.
 
-#### Get Incoming Payment Status
-```
-GET /api/v1/open-payments/resource/incoming-payments/{payment_id}
-```
+**POST** `/api/v1/open-payments/incoming-payments`
 
-#### Create Quote
-```
-POST /api/v1/open-payments/quotes
-```
+Create an incoming payment with optional limit and expiry.
 
-#### Internal Fulfillment Hook (not public)
-```
-POST /api/v1/open-payments/internal/incoming-payments/{payment_id}/fulfill
-```
-Called by the ILP connector/settlement engine when real value arrives.
+**Request:**
 
----
+```json
+{
+  "walletAddressId": "...",
+  "incomingAmount": {
+    "value": "5000",
+    "assetCode": "NGN",
+    "assetScale": 2
+  },
+  "expiresAt": "2024-12-31T23:59:59Z"
+}
+```
 
 ### Webhook Endpoints
 
-| Endpoint | Provider | Purpose |
-|---|---|---|
-| `POST /api/v1/webhooks/paystack` | Paystack | Fiat settlement confirmation (HMAC-SHA512 verified) |
-| `POST /api/v1/webhooks/flutterwave` | Flutterwave | Fiat settlement confirmation |
-| `POST /api/v1/webhooks/quidax` | Quidax | Crypto order status updates |
-| `POST /api/v1/webhooks/busha` | Busha | Crypto order status updates |
+**POST** `/api/v1/webhooks/paystack`
 
----
+Verifies HMAC-SHA512 signature and processes charge.success / charge.failed events.
+
+**POST** `/api/v1/webhooks/flutterwave`
+
+Verifies hash signature and processes charge events.
+
+**POST** `/api/v1/webhooks/quidax`
+
+Listens for order status updates (filled, rejected, etc.).
+
+**POST** `/api/v1/webhooks/busha`
+
+Listens for order and settlement status.
 
 ### Admin Dashboard API
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/` | GET | Serves the admin dashboard HTML |
-| `/admin/api/stats` | GET | Real-time platform statistics (users, volume, revenue, status breakdown) |
-| `/admin/api/transactions` | GET | Paginated transaction list with status filter |
-| `/admin/api/audit-log` | GET | Audit log entries with action filter |
-| `/admin/ws` | WS | WebSocket endpoint for live dashboard updates |
-| `/admin/health` | GET | Admin service health check |
+#### Get Transaction Summary
+
+**GET** `/api/v1/admin/transactions/summary`
+
+```json
+{
+  "totalVolume": "1500000",
+  "totalTransactions": 234,
+  "successRate": 0.976,
+  "avgSettlementTime": 142.3
+}
+```
+
+#### List Transactions (Paginated)
+
+**GET** `/api/v1/admin/transactions?page=1&limit=50&status=completed&dateFrom=2024-01-01`
+
+#### WebSocket Feed
+
+**WS** `/ws/admin/transactions`
+
+Real-time transaction stream.
 
 ---
 
 ## Database Schema
 
-The platform uses **7 tables** managed by Alembic migrations:
-
-| Table | Description | Key Columns |
-|---|---|---|
-| `users` | Registered users (phone-identified) | `phone_number`, `hashed_pin`, `kyc_tier`, `bvn_encrypted`, `daily_volume_ngn` |
-| `bank_accounts` | Linked Nigerian bank accounts | `bank_code`, `account_number`, `account_name`, `is_verified`, `paystack_recipient_code` |
-| `exchange_accounts` | Linked crypto exchange/VASP accounts | `exchange`, `api_key_encrypted`, `api_secret_encrypted`, `is_verified` |
-| `quotes` | Locked conversion quotes with ILP conditions | `fiat_amount_ngn`, `crypto_amount`, `exchange_rate`, `ilp_condition`, `ilp_fulfillment_encrypted`, `expires_at` |
-| `transactions` | Full transaction records with dual-leg tracking | `status`, `bank_reference`, `exchange_order_id`, `ilp_packet_id`, `ilp_status`, `failure_reason`, `rollback_reference` |
-| `audit_logs` | Immutable audit trail | `action`, `resource_type`, `resource_id`, `details`, `ip_address` |
-| `open_payments_incoming_payments` | Open Payments incoming payment resources | `wallet_address`, `incoming_amount_value`, `received_amount_value`, `completed`, `fulfillment_reference` |
-
-**Transaction Status Lifecycle:**
-
-```
-PENDING → QUOTED → CONFIRMED → EXECUTING → FIAT_SETTLED → CRYPTO_SETTLED → COMPLETED
-                                    ↓                                          ↑
-                                  FAILED ─────────── ROLLED_BACK               │
-                                    ↓                                          │
-                                 EXPIRED                                   (success)
-```
+Models are in `packages/db/models/`. Tables: users, sessions, transactions, kyc_tiers, wallets, quotes, audit_logs, ilp_conditions, etc. Migrations are in `packages/db/migrations/`.
 
 ---
 
 ## KYC / AML Compliance
 
-Ogak enforces tiered transaction limits based on identity verification:
+### Tier System
 
-| Tier | Verification | Per Transaction Limit | Daily Limit |
+| Tier | Limit/Tx | Identity Required | Bank Verification |
 |---|---|---|---|
-| **Tier 0** | Phone only (unverified) | ₦0 (no transactions) | ₦0 |
-| **Tier 1** | Phone + PIN set | ₦50,000 | ₦500,000 |
-| **Tier 2** | BVN validated | ₦500,000 | ₦5,000,000 |
-| **Tier 3** | Full KYC (ID + address) | ₦5,000,000 | ₦50,000,000 |
+| **Tier 0** | ₦50,000 | Phone number only | No |
+| **Tier 1** | ₦50,000 | Email verified | No |
+| **Tier 2** | ₦500,000 | BVN + bank linked | Yes (Paystack) |
+| **Tier 3** | ₦5,000,000 | Full KYC on file | Yes |
 
-- BVN verification is performed via Flutterwave (configurable)
-- Daily volume tracking resets at UTC midnight
-- PIN lockout after 3 failed attempts (30-minute cooldown)
-- All KYC events are logged to the `audit_logs` table
+Users start at Tier 0. Tier 1 happens automatically. Tier 2+ needs BVN validation and a bank link.
+
+### How It Works
+
+Every transaction creates an audit log entry with timestamp and actor. BVN data is encrypted at rest (AES-256-GCM). Phone numbers get masked in logs (e.g., +234801****678). Webhook payloads include a reference to the audit trail. Celery tasks log every settlement step so you can reconstruct what happened.
 
 ---
 
@@ -634,96 +613,54 @@ Ogak enforces tiered transaction limits based on identity verification:
 
 ### Banking Providers
 
-| Provider | Usage | API |
+| Provider | Use | Credentials |
 |---|---|---|
-| **Paystack** | Account verification, transfers (credit), recipient management | `https://api.paystack.co` |
-| **Flutterwave** | Account verification, charges (debit), transfers, BVN validation | `https://api.flutterwave.com/v3` |
-
-Both providers implement the abstract `BankProvider` interface:
-- `verify_account()` — Resolve account name from NUBAN + bank code
-- `initiate_debit()` — Charge user's bank account (buy crypto)
-- `initiate_credit()` — Transfer NGN to user's bank (sell crypto)
-- `get_transaction_status()` — Check settlement status
+| **Paystack** | Charge user accounts, pay out | `PAYSTACK_SECRET_KEY` |
+| **Flutterwave** | Alternative charge, BVN validation | `FLW_SECRET_KEY` |
+| **NIP/NIBSS** | Direct bank transfers (via Paystack) | Via Paystack |
 
 ### Crypto Exchanges / VASPs
 
-| Exchange | Type | Supported Assets | Notes |
+| VASP | Use | Type | Credentials |
 |---|---|---|---|
-| **Quidax** | SEC-Licensed VASP (Primary) | BTC, USDT, USDC, ETH, BNB | Native NGN pairs, primary provider |
-| **Busha** | SEC-Licensed VASP | BTC, USDT, USDC, ETH | Secondary exchange |
-| **Binance** | Global Exchange | BTC, USDT, USDC, ETH, BNB | P2P API, returns USDT pairs (RateService converts to NGN) |
-
-All exchanges implement the abstract `ExchangeProvider` interface:
-- `get_price()` — Fetch live crypto/NGN rate
-- `get_balance()` — Available crypto balance
-- `buy_crypto()` — Execute buy order
-- `sell_crypto()` — Execute sell order
-- `get_order_status()` — Check order completion
+| **Quidax** | Primary crypto exchange (USDT/USDC/BTC/ETH) | SEC-licensed | `QUIDAX_SECRET_KEY` |
+| **Busha** | Secondary exchange, fallback | SEC-licensed | `BUSHA_API_KEY` |
+| **Binance** | Global spot trading, stablecoin conversion | Global | `BINANCE_API_KEY` |
 
 ### Africa's Talking
 
-- **USSD Gateway** — Production shortcode callback at `/api/v1/ussd/callback`
-- **SMS** — Transaction confirmations, OTP, PIN lockout notifications (via SMS templates)
-- **Environment** — Must be set to `production` for live shortcode operation
+Receives user input, sends menu responses. SMS fallback is optional. Credentials: `AT_USERNAME`, `AT_API_KEY`, `AT_USSD_SHORTCODE`.
 
 ---
 
 ## Configuration Reference
 
-The platform is configured entirely through environment variables, loaded via Pydantic Settings. All variables are documented in `.env.example`.
+All variables are in `.env.example`. Key sections:
 
-<details>
-<summary><strong>Click to expand full configuration reference</strong></summary>
+**Database & Cache**
+- `DATABASE_URL` — async PostgreSQL connection string
+- `REDIS_URL` — Redis connection string
 
-| Category | Variable | Default | Description |
-|---|---|---|---|
-| **App** | `APP_NAME` | `ogak-ussd` | Application name |
-| | `APP_ENV` | `development` | Environment (`production` / `development`) |
-| | `APP_DEBUG` | `true` | Debug mode |
-| | `APP_SECRET_KEY` | — | 64-char hex secret |
-| | `APP_ENCRYPTION_KEY` | — | 32-byte hex key for AES-256-GCM |
-| **Ports** | `USSD_PORT` | `8000` | USSD engine port |
-| | `API_PORT` | `8001` | API gateway port |
-| | `ILP_PORT` | `8002` | ILP connector port |
-| | `ADMIN_PORT` | `8003` | Admin dashboard port |
-| **Database** | `DATABASE_URL` | `postgresql+asyncpg://...` | Async connection string |
-| | `DATABASE_SYNC_URL` | `postgresql://...` | Sync connection (Alembic) |
-| **Redis** | `REDIS_URL` | `redis://localhost:6379/0` | Main Redis URL |
-| | `REDIS_SESSION_DB` | `1` | DB index for sessions |
-| | `REDIS_CACHE_DB` | `2` | DB index for rate cache |
-| **Africa's Talking** | `AT_USERNAME` | — | AT production username |
-| | `AT_API_KEY` | — | AT production API key |
-| | `AT_USSD_SHORTCODE` | `*384*OGAK#` | Live USSD shortcode |
-| | `AT_ENVIRONMENT` | `production` | Must be `production` for live |
-| **Flutterwave** | `FLW_SECRET_KEY` | — | Live secret key (`FLWSECK-...`) |
-| | `FLW_WEBHOOK_SECRET` | — | Webhook signature verification |
-| **Paystack** | `PAYSTACK_SECRET_KEY` | — | Live secret key (`sk_live_...`) |
-| | `PAYSTACK_WEBHOOK_SECRET` | — | HMAC-SHA512 verification |
-| **Quidax** | `QUIDAX_SECRET_KEY` | — | API key for primary VASP |
-| **Busha** | `BUSHA_API_KEY` | — | Secondary exchange API key |
-| **Binance** | `BINANCE_API_KEY` | — | Global exchange API key |
-| **ILP** | `ILP_CONNECTOR_ADDRESS` | `g.ogak.ng.connector` | ILP address prefix |
-| | `ILP_CONNECTOR_SECRET` | — | Min 32-char secret |
-| | `ILP_MAX_PACKET_AMOUNT` | `1000000000` | Max ILP packet (₦10M in kobo) |
-| | `ILP_DEFAULT_SPREAD_BPS` | `150` | Default spread (1.5%) |
-| **KYC** | `KYC_TIER1_TX_LIMIT_NGN` | `50000` | Tier 1 per-transaction limit |
-| | `KYC_TIER2_TX_LIMIT_NGN` | `500000` | Tier 2 per-transaction limit |
-| | `KYC_TIER3_TX_LIMIT_NGN` | `5000000` | Tier 3 per-transaction limit |
-| | `BVN_VALIDATION_PROVIDER` | `flutterwave` | BVN verification provider |
-| **USSD** | `USSD_SESSION_TTL_SECONDS` | `180` | Session timeout (3 minutes) |
-| | `USSD_MAX_PIN_ATTEMPTS` | `3` | Attempts before lockout |
-| | `USSD_PIN_LOCKOUT_SECONDS` | `1800` | Lockout duration (30 minutes) |
-| **Rates** | `RATE_CACHE_TTL_SECONDS` | `30` | Rate cache duration |
-| | `RATE_QUOTE_EXPIRY_SECONDS` | `120` | Quote validity window |
-| | `RATE_SPREAD_BPS` | `150` | Platform spread (1.5%) |
-| **Celery** | `CELERY_BROKER_URL` | `redis://localhost:6379/3` | Task queue broker |
-| | `CELERY_RESULT_BACKEND` | `redis://localhost:6379/4` | Task result store |
-| **Logging** | `LOG_LEVEL` | `INFO` | Log verbosity |
-| | `LOG_FORMAT` | `json` | Log format (`json` / `text`) |
-| **CORS** | `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed origins |
-| **Open Payments** | `OP_PUBLIC_BASE_URL` | `http://localhost:8001` | Public base URL for OP endpoints |
+**Providers**
+- `PAYSTACK_SECRET_KEY`, `PAYSTACK_WEBHOOK_SECRET`
+- `FLW_SECRET_KEY`, `FLW_WEBHOOK_SECRET`
+- `QUIDAX_SECRET_KEY`, `BUSHA_API_KEY`, `BINANCE_API_KEY`
+- `AT_USERNAME`, `AT_API_KEY`, `AT_USSD_SHORTCODE`
 
-</details>
+**ILP**
+- `ILP_CONNECTOR_ADDRESS` — address prefix (e.g., `g.ogak.ng.connector`)
+- `ILP_CONNECTOR_SECRET` — 32+ character secret
+
+**Security**
+- `KYC_TIER1_TX_LIMIT_NGN`, `KYC_TIER2_TX_LIMIT_NGN`, `KYC_TIER3_TX_LIMIT_NGN`
+- `USSD_SESSION_TTL_SECONDS` — session timeout (default 180)
+- `USSD_MAX_PIN_ATTEMPTS` — attempts before lockout (default 3)
+- `USSD_PIN_LOCKOUT_SECONDS` — lockout duration (default 1800)
+
+**Rates**
+- `RATE_CACHE_TTL_SECONDS` — how long to cache rates (default 30)
+- `RATE_QUOTE_EXPIRY_SECONDS` — quote validity window (default 120)
+- `RATE_SPREAD_BPS` — platform margin (default 150 = 1.5%)
 
 ---
 
@@ -735,24 +672,21 @@ The platform is configured entirely through environment variables, loaded via Py
 docker-compose up -d
 ```
 
-This starts all services with hot-reload enabled and source code mounted as volumes.
+Starts all services with hot-reload and mounted source volumes.
 
 ### Production
 
-The `Dockerfile` includes a production stage that:
-- Creates a non-root `ogak` user
-- Runs Uvicorn with 4 workers
-- Exposes ports 8000–8004
-
 ```bash
-docker-compose -f docker-compose.yml up -d --build
+docker-compose -f docker-compose.prod.yml up -d --build
 ```
+
+The `Dockerfile` uses a non-root `ogak` user, runs Uvicorn with 4 workers, and exposes ports 8000–8003.
 
 ### Infrastructure
 
-- **PostgreSQL 16 Alpine** — Persistent volume `postgres_data`, health-checked via `pg_isready`
-- **Redis 7 Alpine** — AOF persistence, 256MB max memory with LRU eviction, health-checked via `redis-cli ping`
-- All services connected via `ogak-network` bridge network
+- **PostgreSQL 16 Alpine** — `postgres_data` volume, `pg_isready` health check
+- **Redis 7 Alpine** — AOF persistence, 256MB max with LRU eviction, `redis-cli ping` health check
+- All services on `ogak-network` bridge
 
 ---
 
@@ -761,52 +695,29 @@ docker-compose -f docker-compose.yml up -d --build
 ### Code Quality
 
 ```bash
-# Lint with Ruff
 ruff check packages/
-
-# Format with Ruff
 ruff format packages/
-
-# Type check with mypy (strict mode)
 mypy packages/
 ```
 
-The project enforces:
-- Python 3.11 target
-- 100-char line length
-- Strict mypy (no untyped defs, warn on `Any` returns)
-- Pre-commit hooks for automated checks
+Enforced: Python 3.11 target, 100-char line length, strict mypy, pre-commit hooks.
 
 ### Testing
 
 ```bash
-# Run all tests
 pytest
-
-# Run with coverage
 pytest --cov=packages --cov-report=html
-
-# Run specific test file
 pytest tests/test_quote_service.py -v
 ```
 
-Test configuration in `pyproject.toml`:
-- `asyncio_mode = "auto"` for seamless async test support
-- Verbose output with short tracebacks
+Config in `pyproject.toml`: `asyncio_mode = "auto"`, verbose output.
 
 ### Migrations
 
 ```bash
-# Create a new migration
-alembic revision --autogenerate -m "description of changes"
-
-# Apply migrations
+alembic revision --autogenerate -m "description"
 alembic upgrade head
-
-# Rollback one step
 alembic downgrade -1
-
-# View migration history
 alembic history
 ```
 
@@ -816,62 +727,61 @@ alembic history
 
 ### Open Payments Receive Demo
 
-The `examples/open_payments_receive_demo.py` script demonstrates the receive-side Open Payments flow:
+`examples/open_payments_receive_demo.py` shows the receive-side flow:
 
 ```bash
-# Start Ogak API on port 8001, then:
 python examples/open_payments_receive_demo.py \
     --receiver http://localhost:8001/api/v1/open-payments/wallet-addresses/+2348012345678 \
     --amount 5000
 ```
 
-This performs real protocol steps:
-1. Fetches the wallet address document
-2. Requests a non-interactive incoming-payment grant
-3. Creates an incoming payment on the resource server
+Steps:
+1. Fetch wallet address document
+2. Request non-interactive incoming-payment grant
+3. Create incoming payment on resource server
 
-Fulfillment must be driven by the real settlement layer — no simulation is used.
+Fulfillment is driven by the real settlement layer.
 
 ---
 
 ## Security
 
-| Mechanism | Implementation |
+| Mechanism | Details |
 |---|---|
-| **PIN Hashing** | PBKDF2-HMAC-SHA256 with 100,000 iterations + random 16-byte salt |
-| **Data Encryption** | AES-256-GCM for BVN, API keys, ILP fulfillments (12-byte nonce) |
-| **Webhook Verification** | HMAC-SHA512 for Paystack, hash verification for Flutterwave |
-| **ILP Condition/Fulfillment** | SHA-256 preimage scheme (32-byte condition, 32-byte fulfillment) |
-| **Session Management** | Redis with TTL-based expiry (180 seconds for USSD) |
-| **PIN Brute-Force Protection** | 3 attempts → 30-minute lockout with account lock flag |
-| **Phone Masking** | `+234801****678` format in logs and displays |
-| **BVN Masking** | `*******8901` format for display, encrypted at rest |
-| **Non-Root Container** | Production Docker image runs as `ogak` user |
+| **PIN Hashing** | PBKDF2-HMAC-SHA256, 100k iterations, 16-byte salt |
+| **Data Encryption** | AES-256-GCM for BVN/keys/fulfillments (12-byte nonce) |
+| **Webhook Verification** | HMAC-SHA512 (Paystack), hash (Flutterwave) |
+| **ILP Condition/Fulfillment** | SHA-256 preimage (32-byte condition, 32-byte fulfillment) |
+| **Session Management** | Redis TTL-based (180s for USSD) |
+| **Brute-Force Protection** | 3 PIN attempts → 30-minute lockout |
+| **Phone Masking** | +234801****678 in logs and displays |
+| **BVN Masking** | *******8901 for display, encrypted at rest |
+| **Non-Root Container** | Production image runs as `ogak` user |
 
 ---
 
 ## Roadmap
 
-- [ ] Transaction history in USSD menu (Menu 5)
-- [ ] Full outgoing payments (sender-side Open Payments)
-- [ ] Interactive GNAP grants with user consent UI
-- [ ] SMS OTP for high-value transactions
-- [ ] Multi-exchange rate aggregation (best rate selection)
-- [ ] Webhook event processing for Celery settlement completion
-- [ ] Admin dashboard frontend (HTML/JS client)
-- [ ] Full Rafiki integration for production ILP peering
-- [ ] Rate limiting via SlowAPI middleware
-- [ ] Complete i18n for Yoruba, Hausa, and Igbo languages
+- Transaction history in USSD (Menu 5)
+- Outgoing payments (sender-side Open Payments)
+- Interactive GNAP grants with user consent UI
+- SMS OTP for high-value transactions
+- Multi-exchange rate aggregation
+- Webhook event processing for Celery settlement
+- Admin dashboard frontend (HTML/JS)
+- Full Rafiki integration for production ILP peering
+- Rate limiting via SlowAPI
+- Full i18n for Yoruba, Hausa, Igbo
 
 ---
 
 ## License
 
-This project is licensed under the **MIT License**. See the [pyproject.toml](pyproject.toml) for details.
+MIT License. See [pyproject.toml](pyproject.toml).
 
 ---
 
 <p align="center">
-  Built with ❤️ for financial inclusion in Nigeria<br/>
-  <strong>Ogak Team</strong> — Making crypto accessible to everyone, no smartphone needed.
+  Built for financial inclusion in Nigeria<br/>
+  <strong>Ogak Team</strong> — Crypto on any phone, no internet required.
 </p>
