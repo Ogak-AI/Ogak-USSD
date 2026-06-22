@@ -10,7 +10,7 @@ from typing import Optional
 
 import httpx
 
-from packages.shared.config import config
+from packages.shared.config import get_settings
 from packages.shared.errors import ExternalServiceError
 from packages.shared.types import BankAccountModel
 
@@ -73,7 +73,8 @@ class PaystackProvider(BankProvider):
     """Paystack bank integration."""
     
     def __init__(self):
-        self.secret_key = config.bank.paystack_secret_key
+        settings = get_settings()
+        self.secret_key = settings.paystack_secret_key
         self.base_url = "https://api.paystack.co"
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
@@ -231,7 +232,8 @@ class FlutterwaveProvider(BankProvider):
     """Flutterwave bank integration."""
     
     def __init__(self):
-        self.secret_key = config.bank.flutterwave_secret_key
+        settings = get_settings()
+        self.secret_key = settings.flw_secret_key
         self.base_url = "https://api.flutterwave.com/v3"
         self.client = httpx.AsyncClient(
             base_url=self.base_url,

@@ -10,7 +10,7 @@ from typing import Optional
 
 import httpx
 
-from packages.shared.config import config
+from packages.shared.config import get_settings
 from packages.shared.errors import ExternalServiceError
 
 logger = logging.getLogger(__name__)
@@ -61,8 +61,9 @@ class BinanceProvider(ExchangeProvider):
     """Binance exchange integration (via P2P API)."""
     
     def __init__(self):
-        self.api_key = config.exchange.binance_api_key
-        self.api_secret = config.exchange.binance_api_secret
+        settings = get_settings()
+        self.api_key = settings.binance_api_key
+        self.api_secret = settings.binance_secret_key
         self.base_url = "https://api.binance.com"
         self.client = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
     
@@ -172,8 +173,9 @@ class QuidaxProvider(ExchangeProvider):
     """Quidax exchange integration (Nigerian exchange)."""
     
     def __init__(self):
-        self.api_key = config.exchange.quidax_api_key
-        self.base_url = config.exchange.quidax_base_url
+        settings = get_settings()
+        self.api_key = settings.quidax_secret_key
+        self.base_url = settings.quidax_base_url
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self.api_key}"},

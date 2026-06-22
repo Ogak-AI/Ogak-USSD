@@ -82,6 +82,11 @@ class USSDMenu:
             await self.initialize_user()
 
         text = (raw_input or "").strip()
+        
+        # NEW USERS: Force PIN registration before allowing any transactions
+        if not self.user.hashed_pin and self.current_state not in (USSDMenuState.REGISTER_PIN, USSDMenuState.REGISTER_CONFIRM_PIN):
+            self.current_state = USSDMenuState.REGISTER_PIN
+            return self._render_register_pin(), USSDMenuState.REGISTER_PIN
 
         # Global back / cancel handling (available in most states)
         if text == "0" and self.current_state not in (USSDMenuState.MAIN_MENU, USSDMenuState.REGISTER_PIN):
@@ -152,7 +157,18 @@ class USSDMenu:
             "Welcome to Ogak\n1. Buy Crypto\n2. Sell Crypto\n3. Rates\n4. Link Account\n5. History\n6. Help\n0. Exit",
         )
 
+    def _render_register_pin(self) -> str:
+        """Render PIN registration prompt for new users."""
+        return self._t(
+            "Welcome to Ogak!\nFirst, create a 4-6 digit security PIN.\nEnter your PIN:",
+            "Welcome to Ogak!\nFirst, create a 4-6 digit PIN.\nEnter your PIN:",
+        )
+
     async def _handle_main_menu(self, choice: str) -> tuple[str, Optional[USSDMenuState]]:
+        # Empty input on session start (Africa's Talking sends empty string) is not an error
+        if not choice:
+            return self._render_main_menu(), USSDMenuState.MAIN_MENU
+            
         if choice == "1":
             self.current_state = USSDMenuState.BUY_ENTER_AMOUNT
             return "Enter amount in Naira you want to spend (min ₦5,000):", USSDMenuState.BUY_ENTER_AMOUNT

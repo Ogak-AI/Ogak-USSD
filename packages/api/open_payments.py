@@ -23,6 +23,7 @@ For full spec compliance (production), consider:
 - Supporting outgoing payments (Ogak users paying out via OP)
 """
 
+import json
 import logging
 import secrets
 import uuid
@@ -32,6 +33,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.db.database import get_db
@@ -50,15 +52,6 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/open-payments", tags=["open-payments"])
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Ephemeral grant store (short-lived by design for non-interactive incoming grants)
-# Incoming payments are now fully persisted via OpenPaymentsService + DB model.
-# No mock or simulation data is used anywhere.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# grant_token -> grant info (for token validation at create time)
-_ACTIVE_GRANTS: dict[str, dict[str, Any]] = {}
 
 
 def _get_public_base_url(request: Optional[Request] = None) -> str:
@@ -103,15 +96,27 @@ def _generate_access_token() -> str:
     return "op_" + secrets.token_urlsafe(24)
 
 
-def _is_valid_incoming_grant_token(token: str, expected_wallet: Optional[str] = None) -> bool:
-    grant = _ACTIVE_GRANTS.get(token)
-    if not grant:
-        return False
-    if grant.get("type") != "incoming-payment":
-        return False
-    if expected_wallet and grant.get("wallet_address") != expected_wallet:
-        return False
-    return True
+async def _redis_client():
+    """Get Redis client instance."""
+    return AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+
+
+async def _is_valid_incoming_grant_token(token: str, expected_wallet: Optional[str] = None) -> bool:
+    """Check if a grant token is valid. Uses Redis for distributed state."""
+    redis = await _redis_client()
+    try:
+        grant_json = await redis.get(f"op:grant:{token}")
+        if not grant_json:
+            return False
+        
+        grant = json.loads(grant_json)
+        if grant.get("type") != "incoming-payment":
+            return False
+        if expected_wallet and grant.get("wallet_address") != expected_wallet:
+            return False
+        return True
+    finally:
+        await redis.close()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -256,10 +261,16 @@ async def request_grant(body: OpenPaymentsGrantRequest, request: Request) -> Ope
         "wallet_address": None,  # can be bound later on first use or from client info
         "type": "incoming-payment",
         "actions": ["create", "read"],
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "raw_request": body.model_dump() if hasattr(body, "model_dump") else dict(body),
     }
-    _ACTIVE_GRANTS[token_value] = grant_info
+    
+    # Store grant in Redis with 1-hour expiration
+    redis = await _redis_client()
+    try:
+        await redis.setex(f"op:grant:{token_value}", 3600, json.dumps(grant_info))
+    finally:
+        await redis.close()
 
     logger.info("Issued non-interactive incoming-payment grant", extra={"token_prefix": token_value[:10]})
 
@@ -513,12 +524,28 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
     except Exception:
         ip_count = -1  # indicates DB not yet migrated or transient issue
 
+    # Count active grants in Redis
+    active_grants_count = 0
+    try:
+        redis = await _redis_client()
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await redis.scan(cursor, match="op:grant:*", count=100)
+                active_grants_count += len(keys)
+                if cursor == 0:
+                    break
+        finally:
+            await redis.close()
+    except Exception:
+        active_grants_count = -1
+
     return {
         "status": "healthy",
         "service": "ogak-open-payments",
         "version": "2.0.0",
         "features": ["wallet-addresses", "grants (incoming)", "incoming-payments (resource server, db-backed)"],
-        "active_grants": len(_ACTIVE_GRANTS),
+        "active_grants": active_grants_count,
         "persisted_incoming_payments": ip_count,
         "note": "Fulfillment only via real settlement. Run the 002 migration for the table.",
     }

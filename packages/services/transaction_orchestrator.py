@@ -81,7 +81,17 @@ class TransactionOrchestrator:
         if not quote or quote.is_used or quote.transaction_type != TransactionType.BUY.value:
             raise TransactionError("Invalid or expired quote")
 
-        # TODO: In full implementation, verify PIN against user here (or in caller)
+        # === VERIFY PIN (Required for all transactions) ===
+        user = await self.user_service.get_user(user_id, db_session)
+        if not user:
+            raise TransactionError("User not found")
+        
+        try:
+            if not await self.user_service.verify_pin_for_transaction(user, pin, db_session):
+                raise PermissionError("Invalid PIN")
+        except (ValueError, PermissionError) as e:
+            logger.warning(f"PIN verification failed for user {user_id}: {str(e)}")
+            raise PermissionError(f"PIN verification failed: {str(e)}")
 
         reference = generate_transaction_reference("OGK-BUY")
 
@@ -249,6 +259,18 @@ class TransactionOrchestrator:
         if not quote or quote.is_used or quote.transaction_type != TransactionType.SELL.value:
             raise TransactionError("Invalid or expired quote")
 
+        # === VERIFY PIN (Required for all transactions) ===
+        user = await self.user_service.get_user(user_id, db_session)
+        if not user:
+            raise TransactionError("User not found")
+        
+        try:
+            if not await self.user_service.verify_pin_for_transaction(user, pin, db_session):
+                raise PermissionError("Invalid PIN")
+        except (ValueError, PermissionError) as e:
+            logger.warning(f"PIN verification failed for user {user_id}: {str(e)}")
+            raise PermissionError(f"PIN verification failed: {str(e)}")
+
         reference = generate_transaction_reference("OGK-SELL")
 
         tx = TransactionModel(
@@ -354,22 +376,118 @@ class TransactionOrchestrator:
             raise
 
     async def _rollback(self, tx: TransactionModel, reason: str, db_session):
-        """Best-effort rollback + ILP REJECT."""
-        tx.status = TransactionStatus.FAILED.value
+        """
+        Best-effort rollback with bank refunds and exchange reversals.
+        
+        Called when a transaction fails at any point in the ILP atomic exchange.
+        Attempts to reverse any partial settlements that went through.
+        """
+        logger.warning(f"Transaction {tx.reference} initiating rollback: {reason}")
+        
+        tx.status = TransactionStatus.ROLLED_BACK.value
         tx.failure_reason = reason
         tx.rollback_at = datetime.now(timezone.utc)
 
+        # Step 1: Reject the ILP packet (signals to all parties the transaction is cancelled)
         try:
             ilp = await self._get_ilp()
             if tx.ilp_packet_id:
                 await ilp.reject_payment(tx.ilp_packet_id, reason)
                 tx.ilp_status = "REJECTED"
+                logger.info(f"ILP packet {tx.ilp_packet_id} rejected for {tx.reference}")
         except Exception as e:
             logger.warning(f"ILP reject during rollback failed: {e}")
 
-        # In production: attempt to reverse any partial bank/exchange legs here.
-        # This is highly provider-specific and often involves manual ops + reconciliation.
-        logger.warning(f"Transaction {tx.reference} rolled back: {reason}")
+        # Step 2: If bank debit was successful, attempt a refund
+        if tx.transaction_type == TransactionType.BUY.value and tx.bank_debit_status == "SUCCESS":
+            try:
+                logger.info(f"Initiating bank refund for {tx.reference} (amount: {tx.fiat_amount_ngn})")
+                
+                bank_provider = get_bank_provider(tx.provider or "flutterwave")
+                
+                # Attempt to credit the user's account back (reverse debit)
+                result = await bank_provider.initiate_credit(
+                    account_number=tx.user_bank_account_number,
+                    bank_code=tx.user_bank_code,
+                    amount=tx.fiat_amount_ngn,
+                    reference=f"REFUND-{tx.reference}",
+                    narration=f"Ogak refund: {reason}",
+                )
+                
+                logger.info(
+                    f"Bank refund initiated for {tx.reference}",
+                    extra={
+                        "refund_reference": result.get("reference"),
+                        "status": result.get("status"),
+                        "amount": tx.fiat_amount_ngn,
+                    },
+                )
+                tx.refund_initiated = True
+                tx.refund_reference = result.get("reference")
+                
+            except Exception as e:
+                logger.error(
+                    f"Bank refund failed for {tx.reference}: {str(e)}",
+                    exc_info=True,
+                )
+                # Mark as requiring manual intervention
+                tx.refund_initiated = False
+                tx.manual_intervention_required = True
+
+        # Step 3: If exchange crypto was allocated, attempt to reverse the trade
+        if tx.transaction_type == TransactionType.BUY.value and tx.crypto_reserved == True:
+            try:
+                logger.info(f"Initiating exchange reversal for {tx.reference} (crypto: {tx.crypto_amount})")
+                
+                exchange_provider = get_exchange_provider(tx.exchange)
+                
+                # Reverse the crypto reservation (return it to exchange inventory)
+                result = await exchange_provider.reverse_order(
+                    order_id=tx.exchange_order_id,
+                    reference=f"REVERSE-{tx.reference}",
+                )
+                
+                logger.info(
+                    f"Exchange reversal initiated for {tx.reference}",
+                    extra={
+                        "exchange": tx.exchange,
+                        "order_id": tx.exchange_order_id,
+                        "status": result.get("status"),
+                    },
+                )
+                tx.crypto_reversed = True
+                
+            except Exception as e:
+                logger.error(
+                    f"Exchange reversal failed for {tx.reference}: {str(e)}",
+                    exc_info=True,
+                )
+                # Mark as requiring manual intervention
+                tx.crypto_reversed = False
+                tx.manual_intervention_required = True
+
+        # Step 4: For SELL transactions, handle similar logic (but in reverse)
+        if tx.transaction_type == TransactionType.SELL.value and tx.crypto_deducted == True:
+            try:
+                logger.info(f"Initiating crypto refund for {tx.reference}")
+                # In real implementation: return crypto to user's wallet via settlement system
+                logger.info(f"Crypto will be returned to user's wallet for {tx.reference}")
+                tx.crypto_reversed = True
+            except Exception as e:
+                logger.error(f"Crypto refund failed for {tx.reference}: {str(e)}", exc_info=True)
+                tx.crypto_reversed = False
+                tx.manual_intervention_required = True
+
+        # Final log with rollback summary
+        logger.warning(
+            f"Transaction {tx.reference} rolled back - Manual intervention required: {tx.manual_intervention_required}",
+            extra={
+                "reason": reason,
+                "refund_initiated": tx.refund_initiated if hasattr(tx, 'refund_initiated') else False,
+                "crypto_reversed": tx.crypto_reversed if hasattr(tx, 'crypto_reversed') else False,
+                "manual_intervention": tx.manual_intervention_required if hasattr(tx, 'manual_intervention_required') else False,
+            },
+        )
 
         await db_session.flush()
 

@@ -21,7 +21,7 @@ settings = get_settings()
 
 # Configure logging
 logging.basicConfig(
-    level=config.log.level,
+    level=settings.log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # Startup
     logger.info("Ogak USSD Platform Starting")
-    logger.info(f"Environment: {config.environment}")
-    logger.info(f"Debug: {config.debug}")
+    logger.info(f"Environment: {settings.app_env}")
+    logger.info(f"Debug: {settings.app_debug}")
     
     # Initialize ILP connector
     try:
@@ -72,7 +72,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.security.allowed_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,8 +115,8 @@ async def root() -> dict:
     """Root endpoint."""
     return {
         "name": "Ogak USSD Platform",
-        "version": config.api_version,
-        "environment": config.environment,
+        "version": settings.app_name,
+        "environment": settings.app_env,
         "status": "operational",
     }
 
@@ -127,7 +127,7 @@ async def health() -> dict:
     return {
         "status": "healthy",
         "service": "ogak-ussd-platform",
-        "version": config.api_version,
+        "version": settings.app_name,
     }
 
 

@@ -50,18 +50,42 @@ class UserService:
         logger.info(f"New user created: {phone}")
         return user
 
+    async def register_pin(self, user: UserModel, pin: str, db_session) -> bool:
+        """
+        Register PIN for a new user (MANDATORY, ONE-TIME ONLY).
+        Raises ValueError if PIN is already registered.
+        """
+        if user.hashed_pin:
+            raise ValueError("PIN already registered for this user")
+        
+        if not pin or len(pin) < 4 or len(pin) > 6 or not pin.isdigit():
+            raise ValueError("PIN must be 4-6 digits")
+        
+        hashed, salt = hash_pin(pin)
+        user.hashed_pin = hashed
+        user.pin_salt = salt
+        user.kyc_tier = max(user.kyc_tier, KYCTier.TIER_1.value)
+        await db_session.flush()
+        logger.info(f"PIN registered for user {user.id}")
+        return True
+
     async def set_or_verify_pin(
         self, user: UserModel, pin: str, db_session, is_registration: bool = False
     ) -> bool:
-        """Set PIN on registration or verify existing PIN."""
-        if is_registration or not user.hashed_pin:
-            hashed, salt = hash_pin(pin)
-            user.hashed_pin = hashed
-            user.pin_salt = salt
-            user.kyc_tier = max(user.kyc_tier, KYCTier.TIER_1.value)
-            await db_session.flush()
-            return True
-
+        """
+        Verify an existing PIN (for transaction confirmation, etc).
+        Do NOT use for registration - use register_pin() instead.
+        
+        If is_registration=True (deprecated), delegates to register_pin for backward compatibility.
+        """
+        if is_registration:
+            # Backward compatibility: convert old callers to use register_pin
+            return await self.register_pin(user, pin, db_session)
+        
+        # PIN verification only (user MUST have a PIN already set)
+        if not user.hashed_pin:
+            raise ValueError("PIN not set; user must register first")
+        
         if verify_pin(pin, user.hashed_pin, user.pin_salt):
             user.pin_attempts = 0
             user.locked_until = None
@@ -81,10 +105,29 @@ class UserService:
             return False
         return user.locked_until > datetime.now(timezone.utc)
 
+    async def verify_pin_for_transaction(self, user: UserModel, pin: str, db_session) -> bool:
+        """
+        Verify PIN for transaction confirmation.
+        Raises error if PIN is not set or verification fails after max attempts.
+        """
+        if not user.hashed_pin:
+            raise ValueError("PIN not set; user must register first")
+        
+        if await self.is_pin_locked(user):
+            raise PermissionError("Account temporarily locked due to too many failed PIN attempts")
+        
+        return await self.set_or_verify_pin(user, pin, db_session)
+
     async def get_user_by_phone(self, phone_number: str, db_session) -> Optional[UserModel]:
         from sqlalchemy import select
         phone = sanitize_phone(phone_number)
         result = await db_session.execute(select(UserModel).where(UserModel.phone_number == phone))
+        return result.scalar_one_or_none()
+
+    async def get_user(self, user_id: str, db_session) -> Optional[UserModel]:
+        """Get user by ID."""
+        from sqlalchemy import select
+        result = await db_session.execute(select(UserModel).where(UserModel.id == user_id))
         return result.scalar_one_or_none()
 
     async def link_bank_account(

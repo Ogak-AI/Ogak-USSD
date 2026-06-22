@@ -35,7 +35,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.security.allowed_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +47,7 @@ async def root() -> dict:
     """Root endpoint."""
     return {
         "name": "Ogak USSD Service",
-        "version": config.api_version,
+        "version": settings.app_name,
         "status": "operational",
     }
 
@@ -58,7 +58,7 @@ async def health() -> dict:
     return {
         "status": "healthy",
         "service": "ogak-ussd",
-        "version": config.api_version,
+        "version": settings.app_name,
     }
 
 
